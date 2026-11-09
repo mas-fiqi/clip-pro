@@ -94,3 +94,53 @@ Setiap klaim status VERIFIED wajib dicatat di sini dengan rincian command, outpu
   2. `flutter test` -> `00:23 +160: All tests passed!`
 - **Time:** 2026-11-09 12:47:40
 - **Result:** PASS
+
+---
+
+## EV-010: P1-01 StorageCheckService Verification
+- **Claim:** Pengecekan storage tidak lagi menggunakan directory inode size, melainkan kapasitas riil (StatFs) dengan evaluasi status safe/warning/critical.
+- **Command:** `flutter test test/storage_check_service_test.dart`
+- **Output:** `00:00 +4: All tests passed!`
+- **Artifact:** `lib/core/services/storage_check_service.dart`, `test/storage_check_service_test.dart`
+- **Time:** 2026-11-09 13:07:37
+- **Result:** PASS
+
+---
+
+## EV-011: P1-02 Export Progress Calculation Linear & Bounded
+- **Claim:** Progress ekspor merepresentasikan tahapan nyata (intermediate encoding 85%, concat 5%, audio mix 10%) dan tidak melebihi 100%.
+- **Command:** `flutter test test/export_progress_calculator_test.dart`
+- **Output:** `00:00 +5: All tests passed!`
+- **Artifact:** `lib/core/utils/export_progress_calculator.dart`, `test/export_progress_calculator_test.dart`
+- **Time:** 2026-11-09 13:07:37
+- **Result:** PASS
+
+---
+
+## EV-012: P1-03 Export Cancellation & Lifecycle Safety
+- **Claim:** Pembatalan sesi FFmpeg aman, idempotent, membersihkan file sementara, dan mencegah status completion palsu.
+- **Command:** `flutter test test/export_cancellation_test.dart`
+- **Output:** `00:01 +5: All tests passed!`
+- **Artifact:** `lib/core/engine/ffmpeg_processing_engine.dart`, `test/export_cancellation_test.dart`
+- **Time:** 2026-11-09 13:07:37
+- **Result:** PASS
+
+---
+
+## EV-013: P1-05 Gallery Saver Error Handling & Classification
+- **Claim:** Error penyimpanan ke galeri diklasifikasikan secara jelas (file not found, permission denied, storage full) dan tidak ditelan diam-diam.
+- **Command:** `flutter test test/gallery_saver_service_test.dart`
+- **Output:** `00:01 +3: All tests passed!`
+- **Artifact:** `lib/core/services/gallery_saver_service.dart`, `test/gallery_saver_service_test.dart`
+- **Time:** 2026-11-09 13:07:37
+- **Result:** PASS
+
+---
+
+## EV-014: Full Suite Test Regression & Analyzer
+- **Claim:** 177 tests lulus tanpa kegagalan (160 tests lama + 17 tests baru) dan analyzer bersih.
+- **Command:**
+  1. `flutter analyze` -> `No issues found! (ran in 10.5s)`
+  2. `flutter test` -> `00:35 +177: All tests passed!`
+- **Time:** 2026-11-09 13:08:24
+- **Result:** PASS

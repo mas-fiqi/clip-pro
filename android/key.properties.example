@@ -6,3 +6,4 @@ storeFile=app/release.keystore
 storePassword=GANTI_DENGAN_STORE_PASSWORD
 keyAlias=GANTI_DENGAN_KEY_ALIAS
 keyPassword=GANTI_DENGAN_KEY_PASSWORD
+

@@ -20,14 +20,18 @@ import '../models/timeline_model.dart';
 import '../models/video_effect_model.dart';
 import '../services/device_capability_service.dart';
 import '../services/smart_export_advisor.dart';
+import '../utils/export_progress_calculator.dart';
 import '../utils/time_formatter.dart';
 import 'video_processing_engine.dart';
 
 class FFmpegProcessingEngine implements VideoProcessingEngine {
   FFmpegSession? _currentSession;
 
+  bool _isCancelled = false;
+
   @override
   Future<void> cancelSession() async {
+    _isCancelled = true;
     if (_currentSession != null) {
       await FFmpegKit.cancel(_currentSession!.getSessionId());
       _currentSession = null;
@@ -581,8 +585,10 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
           },
           (statistics) {
             if (totalExpectedMillis > 0 && statistics.getTime() > 0) {
-              final progress = (statistics.getTime() / totalExpectedMillis)
-                  .clamp(0.0, 1.0);
+              final progress = ExportProgressCalculator.calculateSingleClipProgress(
+                timeMillis: statistics.getTime(),
+                totalExpectedMillis: totalExpectedMillis,
+              );
               onProgress?.call(progress);
             }
           },
@@ -651,6 +657,7 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
     ProgressCallback? onProgress,
     LogCallback? onLog,
   }) async {
+    _isCancelled = false;
     if (timeline.clips.isEmpty) {
       onLog?.call('Timeline kosong.');
       return null;
@@ -667,6 +674,11 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
     try {
       // 1. Render klip-klip intermediate dengan resolusi, FPS, dan bitrate yang terstandarisasi
       for (int i = 0; i < timeline.clips.length; i++) {
+        if (_isCancelled) {
+          onLog?.call('Ekspor dibatalkan sebelum merender klip ${i + 1}.');
+          await _cleanupFiles(intermediateFiles);
+          return null;
+        }
         final clip = timeline.clips[i];
         final clipStart = accumulatedTime;
         final clipEnd = accumulatedTime + clip.timelineDuration;
@@ -694,13 +706,13 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
           overlays: relevantOverlays,
           exportConfig: cfg,
           onProgress: (clipProg) {
-            final currentTotalTime =
-                accumulatedTime + (clip.timelineDuration * clipProg);
-            if (totalDuration > 0) {
-              onProgress?.call(
-                (currentTotalTime / totalDuration * 0.85).clamp(0.0, 0.85),
-              );
-            }
+            final progress = ExportProgressCalculator.calculateClipStageProgress(
+              accumulatedDuration: accumulatedTime,
+              currentClipDuration: clip.timelineDuration,
+              currentClipProgress: clipProg,
+              totalDuration: totalDuration,
+            );
+            onProgress?.call(progress);
           },
           onLog: onLog,
         );
@@ -724,15 +736,19 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
           '${tempDir.path}/concat_video_$timestamp.mp4';
       final concatCommand =
           '-y -f concat -safe 0 -i "${listFile.path}" -c copy "$concatenatedVideoPath"';
-      final concatSession = await FFmpegKit.execute(concatCommand);
-      final returnCode = await concatSession.getReturnCode();
+      _currentSession = await FFmpegKit.executeAsync(concatCommand);
+      final concatReturnCode = await _currentSession?.getReturnCode();
+      _currentSession = null;
 
       if (await listFile.exists()) await listFile.delete();
       await _cleanupFiles(intermediateFiles);
 
-      if (!ReturnCode.isSuccess(returnCode)) {
+      if (_isCancelled || !ReturnCode.isSuccess(concatReturnCode)) {
+        final concatFile = File(concatenatedVideoPath);
+        if (await concatFile.exists()) await concatFile.delete();
         return null;
       }
+      onProgress?.call(0.90);
 
       // 3. Mixing Audio Eksternal Dinamis (Mendukung Multi-Track Audio)
       if (cfg.includeAudio && timeline.audioClips.isNotEmpty) {
@@ -848,24 +864,31 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
               '${inputArgs.join(' ')} -filter_complex "$fullFilterComplex" -map 0:v -map "[aout]" -c:v copy -c:a aac -t $totalDuration "$finalOutputPath"';
 
           onLog?.call('Executing Multi-track Audio Mix: $mixCommand');
-          final mixSession = await FFmpegKit.execute(mixCommand);
-          final mixReturn = await mixSession.getReturnCode();
+          _currentSession = await FFmpegKit.executeAsync(mixCommand);
+          final mixReturn = await _currentSession?.getReturnCode();
+          _currentSession = null;
 
           final tempVideo = File(concatenatedVideoPath);
           if (await tempVideo.exists()) await tempVideo.delete();
 
-          if (ReturnCode.isSuccess(mixReturn)) {
+          if (!_isCancelled && ReturnCode.isSuccess(mixReturn)) {
             final outputFile = File(finalOutputPath);
             if (await outputFile.exists()) {
               onProgress?.call(1.0);
               return outputFile;
             }
           } else {
-            final logs = await mixSession.getAllLogsAsString();
-            onLog?.call('Audio mixing failed: $logs');
+            final failFile = File(finalOutputPath);
+            if (await failFile.exists()) await failFile.delete();
+            onLog?.call('Audio mixing failed or cancelled');
           }
         }
       } else {
+        if (_isCancelled) {
+          final tempVideo = File(concatenatedVideoPath);
+          if (await tempVideo.exists()) await tempVideo.delete();
+          return null;
+        }
         final finalFile = File(concatenatedVideoPath);
         if (await finalFile.exists()) {
           onProgress?.call(1.0);

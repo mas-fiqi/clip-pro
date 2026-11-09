@@ -80,3 +80,4 @@ Berdasarkan temuan forensik pada Task #001 (`docs/qa/BASELINE_001.md` dan `docs/
      - P1 runtime export bugs (`tempDir.stat().size`, progress jumps, `PopScope`, `try/catch initialize`)
      - Architecture refactor
      - Fitur UI/UX baru
+

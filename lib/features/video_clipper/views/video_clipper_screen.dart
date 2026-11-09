@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/audio/timeline_audio_sync_service.dart';
@@ -16,6 +15,7 @@ import '../../../core/models/timeline_model.dart';
 import '../../../core/models/rhythm_model.dart';
 import '../../../core/services/gallery_saver_service.dart';
 import '../../../core/services/project_storage_service.dart';
+import '../../../core/services/storage_check_service.dart';
 import '../../../core/services/video_picker_service.dart';
 import '../../../core/models/editor_performance_profile.dart';
 import '../../../core/services/audio_waveform_service.dart';
@@ -178,6 +178,9 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    if (_isProcessing) {
+      _engine.cancelSession();
+    }
     _storage.flushAutoSave();
     _videoPlayerController?.dispose();
     TimelineAudioSyncService().dispose();
@@ -191,25 +194,43 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
     if (videoFile == null) return;
 
     final tempController = VideoPlayerController.file(videoFile);
-    await tempController.initialize();
-    final durSecs = tempController.value.duration.inMilliseconds / 1000.0;
-    await tempController.dispose();
+    try {
+      await tempController.initialize();
+      final durSecs = tempController.value.duration.inMilliseconds / 1000.0;
+      await tempController.dispose();
 
-    final newClip = ClipModel(
-      id: 'clip_${DateTime.now().millisecondsSinceEpoch}',
-      sourcePath: videoFile.path,
-      startSource: 0.0,
-      endSource: durSecs,
-    );
+      if (durSecs <= 0.05) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File video tidak memiliki durasi yang valid.')),
+          );
+        }
+        return;
+      }
 
-    _history.recordState(_timeline);
-    setState(() {
-      _timeline = _timeline.addClip(newClip);
-      _selectedClipId = newClip.id;
-    });
+      final newClip = ClipModel(
+        id: 'clip_${DateTime.now().millisecondsSinceEpoch}',
+        sourcePath: videoFile.path,
+        startSource: 0.0,
+        endSource: durSecs,
+      );
 
-    if (_videoPlayerController == null) {
-      _loadClipForPreview(0, seekToSource: 0.0);
+      _history.recordState(_timeline);
+      setState(() {
+        _timeline = _timeline.addClip(newClip);
+        _selectedClipId = newClip.id;
+      });
+
+      if (_videoPlayerController == null) {
+        _loadClipForPreview(0, seekToSource: 0.0);
+      }
+    } catch (e) {
+      await tempController.dispose();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal memuat video: Format tidak didukung atau file rusak.')),
+        );
+      }
     }
   }
 
@@ -224,29 +245,48 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
     }
 
     final clip = _timeline.clips[clipIndex];
-    final controller = VideoPlayerController.file(File(clip.sourcePath));
-    await controller.initialize();
-
-    final initialSeek = seekToSource ?? clip.startSource;
-    await controller.seekTo(Duration(milliseconds: (initialSeek * 1000).toInt()));
-    await controller.setPlaybackSpeed(clip.speed);
-    await controller.setVolume(clip.volume);
-
-    controller.addListener(() => _onPlayerTick(clipIndex));
-
-    if (!mounted) {
-      await controller.dispose();
+    final file = File(clip.sourcePath);
+    if (!await file.exists()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File media klip tidak ditemukan di perangkat.')),
+        );
+      }
       return;
     }
 
-    setState(() {
-      _activePlayingClipIndex = clipIndex;
-      _videoPlayerController = controller;
-      _selectedClipId = clip.id;
-    });
+    final controller = VideoPlayerController.file(file);
+    try {
+      await controller.initialize();
 
-    if (autoPlay) {
-      controller.play();
+      final initialSeek = seekToSource ?? clip.startSource;
+      await controller.seekTo(Duration(milliseconds: (initialSeek * 1000).toInt()));
+      await controller.setPlaybackSpeed(clip.speed);
+      await controller.setVolume(clip.volume);
+
+      controller.addListener(() => _onPlayerTick(clipIndex));
+
+      if (!mounted) {
+        await controller.dispose();
+        return;
+      }
+
+      setState(() {
+        _activePlayingClipIndex = clipIndex;
+        _videoPlayerController = controller;
+        _selectedClipId = clip.id;
+      });
+
+      if (autoPlay) {
+        controller.play();
+      }
+    } catch (e) {
+      await controller.dispose();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal memutar video: File tidak dapat dibaca atau rusak.')),
+        );
+      }
     }
   }
 
@@ -670,9 +710,28 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
     if (videoFile == null) return;
 
     final tempController = VideoPlayerController.file(videoFile);
-    await tempController.initialize();
-    final newDurSecs = tempController.value.duration.inMilliseconds / 1000.0;
-    await tempController.dispose();
+    final double newDurSecs;
+    try {
+      await tempController.initialize();
+      newDurSecs = tempController.value.duration.inMilliseconds / 1000.0;
+      await tempController.dispose();
+      if (newDurSecs <= 0.05) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File video pengganti tidak valid.')),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      await tempController.dispose();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Gagal membaca video pengganti: File rusak atau tidak didukung.')),
+        );
+      }
+      return;
+    }
 
     final targetClip = _timeline.clips.firstWhere((c) => c.id == clipId, orElse: () => _timeline.clips.first);
     final oldDuration = targetClip.sourceDuration;
@@ -1288,11 +1347,21 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
 
     if (config == null) return;
 
-    // 1. Storage Pre-Check: Periksa kecukupan estimasi penyimpanan
+    // 1. Storage Pre-Check: Periksa kecukupan estimasi penyimpanan nyata (StatFs / DeviceCapability)
     final estimatedMb = config.estimateFileSizeMB(_timeline.totalDuration).ceil();
-    final tempDir = await getTemporaryDirectory();
-    final freeSpaceBytes = await tempDir.stat().then((s) => s.size).catchError((_) => 0);
-    debugPrint('Export storage check: est=$estimatedMb MB, tempDirStat=$freeSpaceBytes bytes');
+    final storageCheck = await StorageCheckService().checkStorageSufficiency(estimatedMb.toDouble());
+    if (!storageCheck.isSufficient) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.redAccent,
+            content: Text(storageCheck.message),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
 
     _videoPlayerController?.pause();
     // Gunakan immutable snapshot timeline & simpan status sebelum ekspor
@@ -1337,15 +1406,23 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
       setState(() => _statusMessage = 'Menyimpan video ke galeri...');
     }
 
-    final isSaved = await _galleryService.saveVideoToGallery(outputFile.path);
+    final saveResult = await _galleryService.saveVideoToGalleryWithResult(outputFile.path);
 
     if (mounted) {
       setState(() => _isProcessing = false);
+      if (!saveResult.isSuccess) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(saveResult.userMessage),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
       // Tampilkan Interactive Export Success BottomSheet
       ExportSuccessDialog.show(
         context,
         filePath: outputFile.path,
-        isSavedToGallery: isSaved,
+        isSavedToGallery: saveResult.isSuccess,
         resolutionText: '${config.targetHeight}p (${config.fpsValue} FPS)',
         fileSizeEstimateMb: estimatedMb,
       );
@@ -1359,7 +1436,46 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
 
     final isPlaying = _videoPlayerController?.value.isPlaying ?? false;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_isProcessing,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (_isProcessing) {
+          final shouldCancel = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              backgroundColor: const Color(0xFF222222),
+              title: const Text('Batalkan Ekspor?', style: TextStyle(color: Colors.white, fontSize: 16)),
+              content: const Text(
+                'Video sedang dalam proses ekspor. Apakah Anda yakin ingin membatalkan proses ini?',
+                style: TextStyle(color: Colors.white70, fontSize: 14),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Lanjutkan Ekspor', style: TextStyle(color: Colors.white54)),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Batalkan', style: TextStyle(color: Colors.redAccent)),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldCancel == true) {
+            await _engine.cancelSession();
+            if (context.mounted) {
+              setState(() {
+                _isProcessing = false;
+                _statusMessage = 'Ekspor dibatalkan.';
+              });
+              Navigator.of(context).maybePop();
+            }
+          }
+        }
+      },
+      child: Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
         leadingWidth: 40,
@@ -1367,6 +1483,38 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
           tooltip: 'Kembali ke Manajer Proyek',
           onPressed: () async {
+            if (_isProcessing) {
+              final shouldCancel = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  backgroundColor: const Color(0xFF222222),
+                  title: const Text('Batalkan Ekspor?', style: TextStyle(color: Colors.white, fontSize: 16)),
+                  content: const Text(
+                    'Video sedang dalam proses ekspor. Apakah Anda yakin ingin membatalkan proses ini?',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text('Lanjutkan Ekspor', style: TextStyle(color: Colors.white54)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text('Batalkan', style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  ],
+                ),
+              );
+              if (shouldCancel == true) {
+                await _engine.cancelSession();
+                if (context.mounted) {
+                  setState(() => _isProcessing = false);
+                  Navigator.of(context).maybePop();
+                }
+              }
+              return;
+            }
+
             await _storage.flushAutoSave();
             if (context.mounted) {
               Navigator.of(context).maybePop();
@@ -1788,6 +1936,7 @@ class _VideoClipperScreenState extends State<VideoClipperScreen> with WidgetsBin
                   ),
               ],
             ),
+    ),
     );
   }
 }
