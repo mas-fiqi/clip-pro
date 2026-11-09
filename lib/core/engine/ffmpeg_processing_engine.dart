@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_session.dart';
@@ -577,9 +578,15 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
         final command =
             '-y -ss $startFormatted -i "${clip.sourcePath}" -t $durationFormatted $filterArg $fpsArg $bitrateArg $audioArg $videoEncoderArgs "$outputPath"';
 
+        final completer = Completer<ReturnCode?>();
         _currentSession = await FFmpegKit.executeAsync(
           command,
-          (session) {},
+          (session) async {
+            final rc = await session.getReturnCode();
+            if (!completer.isCompleted) {
+              completer.complete(rc);
+            }
+          },
           (log) {
             onLog?.call(log.getMessage());
           },
@@ -597,7 +604,7 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
         final session = _currentSession;
         if (session == null) return false;
 
-        final returnCode = await session.getReturnCode();
+        final returnCode = await completer.future;
         _currentSession = null;
 
         if (ReturnCode.isSuccess(returnCode)) {
@@ -726,27 +733,43 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
       }
 
       // 2. Concat klip-klip intermediate
-      final listFile = File('${tempDir.path}/concat_list_$timestamp.txt');
-      final listContent = intermediateFiles
-          .map((f) => "file '${f.path.replaceAll("'", "'\\''")}'")
-          .join('\n');
-      await listFile.writeAsString(listContent);
-
       final concatenatedVideoPath =
           '${tempDir.path}/concat_video_$timestamp.mp4';
-      final concatCommand =
-          '-y -f concat -safe 0 -i "${listFile.path}" -c copy "$concatenatedVideoPath"';
-      _currentSession = await FFmpegKit.executeAsync(concatCommand);
-      final concatReturnCode = await _currentSession?.getReturnCode();
-      _currentSession = null;
 
-      if (await listFile.exists()) await listFile.delete();
-      await _cleanupFiles(intermediateFiles);
+      if (intermediateFiles.length == 1) {
+        // Optimasi: Jika hanya 1 klip, langsung rename / gunakan intermediate file tanpa concat ulang
+        final singleClipFile = intermediateFiles.first;
+        await singleClipFile.rename(concatenatedVideoPath);
+      } else {
+        final listFile = File('${tempDir.path}/concat_list_$timestamp.txt');
+        final listContent = intermediateFiles
+            .map((f) => "file '${f.path.replaceAll("'", "'\\''")}'")
+            .join('\n');
+        await listFile.writeAsString(listContent);
 
-      if (_isCancelled || !ReturnCode.isSuccess(concatReturnCode)) {
-        final concatFile = File(concatenatedVideoPath);
-        if (await concatFile.exists()) await concatFile.delete();
-        return null;
+        final concatCommand =
+            '-y -f concat -safe 0 -i "${listFile.path}" -c copy "$concatenatedVideoPath"';
+        final concatCompleter = Completer<ReturnCode?>();
+        _currentSession = await FFmpegKit.executeAsync(
+          concatCommand,
+          (session) async {
+            final rc = await session.getReturnCode();
+            if (!concatCompleter.isCompleted) {
+              concatCompleter.complete(rc);
+            }
+          },
+        );
+        final concatReturnCode = await concatCompleter.future;
+        _currentSession = null;
+
+        if (await listFile.exists()) await listFile.delete();
+        await _cleanupFiles(intermediateFiles);
+
+        if (_isCancelled || !ReturnCode.isSuccess(concatReturnCode)) {
+          final concatFile = File(concatenatedVideoPath);
+          if (await concatFile.exists()) await concatFile.delete();
+          return null;
+        }
       }
       onProgress?.call(0.90);
 
@@ -864,8 +887,17 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
               '${inputArgs.join(' ')} -filter_complex "$fullFilterComplex" -map 0:v -map "[aout]" -c:v copy -c:a aac -t $totalDuration "$finalOutputPath"';
 
           onLog?.call('Executing Multi-track Audio Mix: $mixCommand');
-          _currentSession = await FFmpegKit.executeAsync(mixCommand);
-          final mixReturn = await _currentSession?.getReturnCode();
+          final mixCompleter = Completer<ReturnCode?>();
+          _currentSession = await FFmpegKit.executeAsync(
+            mixCommand,
+            (session) async {
+              final rc = await session.getReturnCode();
+              if (!mixCompleter.isCompleted) {
+                mixCompleter.complete(rc);
+              }
+            },
+          );
+          final mixReturn = await mixCompleter.future;
           _currentSession = null;
 
           final tempVideo = File(concatenatedVideoPath);
