@@ -20,7 +20,7 @@ QuickClip Pro — Project Quality, Completeness & Verification
 
 | ID | Requirement Area | Acceptance Criteria | Priority | Implementation | UI | Logic | Output | Test | Status |
 |---|---|---|---|---|---|---|---|---|---|
-| REQ-001 | Version Control Integrity | Project memiliki git repository aktif, .gitignore bersih, dan initial commit tersimpan | P0 | ✗ | N/A | ✓ | ✓ | ✗ | NOT IMPLEMENTED |
+| REQ-001 | Version Control Integrity | Project memiliki git repository aktif, .gitignore bersih, dan initial commit tersimpan | P0 | ✓ | N/A | ✓ | ✓ | ✓ | VERIFIED |
 | REQ-002 | Export Filter Parity Audit | Semua preset animasi/efek yang ada di UI memiliki perlakuan filter ekspor nyata atau fallback kategori terdefinisi (tidak silent drop ke empty filter tanpa efek) | P0 | ✗ | ✓ | ✓ | ✗ | ✗ | PARTIAL |
 | REQ-003 | AI Claim & Licensing Sanitization | Bersihkan klaim palsu "AI" di `OnlineAiEffectApiService` (hanya pencarian model HF tanpa inferensi); amankan sumber audio offline | P1 | ✗ | ✓ | ✗ | ✗ | ✗ | PARTIAL |
 | REQ-004 | State Architecture Separation | Pecah monolit `video_clipper_screen.dart` ke controller/notifier independen (Timeline, Overlay, Export) | P1 | ✗ | ✓ | ✓ | ✗ | ✗ | PARTIAL |
