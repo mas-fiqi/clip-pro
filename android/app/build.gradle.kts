@@ -44,17 +44,14 @@ android {
             val storePasswordProp = keystoreProperties.getProperty("storePassword")
 
             if (keyAliasProp != null && keyPasswordProp != null && storeFileProp != null && storePasswordProp != null) {
+                val resolvedStoreFile = rootProject.file(storeFileProp)
+                if (!resolvedStoreFile.exists()) {
+                    throw GradleException("Release keystore file does not exist at: ${resolvedStoreFile.absolutePath}. Please check key.properties.")
+                }
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
-                storeFile = rootProject.file(storeFileProp)
+                storeFile = resolvedStoreFile
                 storePassword = storePasswordProp
-            } else {
-                // Fallback ke debug key untuk testing / sideloading jika key.properties belum disiapkan pengguna
-                val debugSigning = signingConfigs.getByName("debug")
-                keyAlias = debugSigning.keyAlias
-                keyPassword = debugSigning.keyPassword
-                storeFile = debugSigning.storeFile
-                storePassword = debugSigning.storePassword
             }
         }
     }
@@ -67,7 +64,22 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile == null || !releaseSigning.storeFile!!.exists()) {
+                // If release signing credentials are not provided, do NOT fall back to debug signing.
+                // Leave signingConfig unconfigured or fail explicitly so release APK can never be debug-signed silently.
+                gradle.taskGraph.whenReady {
+                    val hasReleaseTask = allTasks.any { it.name.contains("Release", ignoreCase = true) }
+                    if (hasReleaseTask) {
+                        throw GradleException(
+                            "Release signing configuration is missing or incomplete in android/key.properties. " +
+                            "Configure required release keystore credentials (storeFile, storePassword, keyAlias, keyPassword) before building a release artifact."
+                        )
+                    }
+                }
+            } else {
+                signingConfig = releaseSigning
+            }
         }
     }
 }

@@ -97,3 +97,4 @@ Status yang diizinkan: `VERIFIED`, `PARTIAL`, `BROKEN`, `UNVERIFIED`, `NOT IMPLE
 | **Cinematic** | 100 | ✓ Prosedural | Approximate Filter | Approximate |
 | **3D** | 100 | ✓ Prosedural | 0 Filter / 100 PreviewOnly | 100% Preview-Only |
 | **TOTAL** | **900** | **900 Preview Ada** | **85 Full / 671 Approx / 144 Only** | **PARTIAL (NOT IN SCOPE TASK #001)** |
+

@@ -91,3 +91,4 @@ Investigator: Antigravity AI Engine (Under AI Engineering Constitution v2.0)
 | **Release Build** | Tidak diketahui | Berhasil kompilasi dengan `--no-tree-shake-icons` | **PARTIAL** | `build\app\outputs\flutter-apk\app-release.apk` (233.8MB) |
 | **Release Signing** | Debug key fallback aktif | Terbukti CN=Android Debug via apksigner | **OPEN / P0** | `apksigner verify --print-certs` |
 | **INTERNET Permission** | Belum diaudit di manifest | Terbukti absen di release manifest via aapt | **OPEN / P0** | `aapt dump permissions` |
+

@@ -1,0 +1,8 @@
+# Template Konfigurasi Release Keystore Android
+# Salin file ini menjadi 'android/key.properties' dan isi dengan nilai keystore riil Anda.
+# JANGAN PERNAH men-commit 'key.properties' atau file keystore (*.jks / *.keystore) ke repositori publik!
+
+storeFile=app/release.keystore
+storePassword=GANTI_DENGAN_STORE_PASSWORD
+keyAlias=GANTI_DENGAN_KEY_ALIAS
+keyPassword=GANTI_DENGAN_KEY_PASSWORD
