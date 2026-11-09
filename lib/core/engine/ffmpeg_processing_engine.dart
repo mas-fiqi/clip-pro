@@ -504,8 +504,11 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
       final outputPath = '${tempDir.path}/clip_${clip.id}_$timestamp.mp4';
 
       final startFormatted = TimeFormatter.toFFmpegTimestamp(clip.startSource);
-      final durationFormatted = TimeFormatter.toFFmpegTimestamp(
+      final sourceDurationFormatted = TimeFormatter.toFFmpegTimestamp(
         clip.sourceDuration,
+      );
+      final outputDurationFormatted = TimeFormatter.toFFmpegTimestamp(
+        clip.timelineDuration,
       );
       final totalExpectedMillis = (clip.timelineDuration * 1000).toInt();
 
@@ -576,7 +579,7 @@ class FFmpegProcessingEngine implements VideoProcessingEngine {
         }
 
         final command =
-            '-y -ss $startFormatted -i "${clip.sourcePath}" -t $durationFormatted $filterArg $fpsArg $bitrateArg $audioArg $videoEncoderArgs "$outputPath"';
+            '-y -ss $startFormatted -t $sourceDurationFormatted -i "${clip.sourcePath}" $filterArg $fpsArg $bitrateArg $audioArg $videoEncoderArgs -t $outputDurationFormatted "$outputPath"';
 
         final completer = Completer<ReturnCode?>();
         _currentSession = await FFmpegKit.executeAsync(
