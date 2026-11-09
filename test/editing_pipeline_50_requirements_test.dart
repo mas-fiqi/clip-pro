@@ -1,11 +1,8 @@
-import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:video_clipper_app/core/models/clip_model.dart';
 import 'package:video_clipper_app/core/models/clip_transform_model.dart';
 import 'package:video_clipper_app/core/models/color_adjustment_model.dart';
-import 'package:video_clipper_app/core/models/video_effect_model.dart';
 import 'package:video_clipper_app/core/models/audio_clip_model.dart';
-import 'package:video_clipper_app/core/models/audio_effect_model.dart';
 import 'package:video_clipper_app/core/models/overlay_model.dart';
 import 'package:video_clipper_app/core/models/project_model.dart';
 import 'package:video_clipper_app/core/models/timeline_model.dart';

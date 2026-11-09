@@ -72,6 +72,16 @@ class ProjectStorageService {
     return File(p.join(_baseProjectsDir!.path, '$projectId.qcp'));
   }
 
+  @visibleForTesting
+  File getProjectFileForTesting(String projectId) => _getProjectFile(projectId);
+
+  @visibleForTesting
+  void setBaseDirectoryForTesting(Directory dir) {
+    _baseProjectsDir = Directory(p.join(dir.path, 'quickclip_projects'));
+    _backupsDir = Directory(p.join(dir.path, 'quickclip_backups'));
+    _recoveryDir = Directory(p.join(dir.path, 'quickclip_recovery'));
+  }
+
   File _getRecoveryFile() {
     return File(p.join(_recoveryDir!.path, 'recovery_session.qcp'));
   }
